@@ -7,6 +7,7 @@ import { initializeModals, showCancellationModal, showStatistics } from './modal
 
 function initializeModeToggle() {
     const adminBtn = document.getElementById('adminModeBtn');
+    const exitAdminBtn = document.getElementById('exitAdminBtn');
     const userBtn = document.getElementById('userModeBtn');
     const statisticsBtn = document.getElementById('statisticsBtn');
     const adminPanel = document.getElementById('adminPanel');
@@ -35,9 +36,21 @@ function initializeModeToggle() {
         
         state.currentMode = 'admin';
         adminBtn.classList.add('active');
+        adminBtn.style.display = 'none';
+        exitAdminBtn.style.display = 'block';
         userBtn.classList.remove('active');
         adminPanel.classList.add('active');
         userPanel.classList.remove('active');
+    });
+
+    exitAdminBtn.addEventListener('click', () => {
+        state.currentMode = 'user';
+        adminBtn.classList.remove('active');
+        adminBtn.style.display = 'block';
+        exitAdminBtn.style.display = 'none';
+        userBtn.classList.add('active');
+        adminPanel.classList.remove('active');
+        userPanel.classList.add('active');
     });
 
     statisticsBtn.addEventListener('click', () => {
@@ -80,6 +93,10 @@ async function initApp() {
 
     window.addEventListener('showReport', () => {
         showReport();
+    });
+
+    window.addEventListener('showReportWithFilter', (e) => {
+        showReport(e.detail.filterDate);
     });
 
     window.addEventListener('showSearchBookings', () => {
