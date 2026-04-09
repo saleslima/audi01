@@ -772,10 +772,11 @@ function renderStatistics() {
 }
 
 function calculatePeriodOccupancy(month, year, monthConfig) {
+    // Return per-period totals plus breakdown by category: civis, militares copom, militares outros
     const periodStats = {
-        'Manhã': { total: 0, occupied: 0, free: 0 },
-        'Tarde': { total: 0, occupied: 0, free: 0 },
-        'Noite': { total: 0, occupied: 0, free: 0 }
+        'Manhã': { total: 0, civis: 0, mil_copom: 0, mil_outros: 0 },
+        'Tarde': { total: 0, civis: 0, mil_copom: 0, mil_outros: 0 },
+        'Noite': { total: 0, civis: 0, mil_copom: 0, mil_outros: 0 }
     };
     
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -803,23 +804,23 @@ function calculatePeriodOccupancy(month, year, monthConfig) {
         
         effectiveConfig.periods.forEach((period, index) => {
             const periodName = period.name;
-            if (periodStats[periodName]) {
-                const slots = period.slots || 1;
-                periodStats[periodName].total += slots;
-                
-                const periodBookings = dayBookings.filter(b => 
-                    b.periodIndex === index && !b.cancellation
-                ).length;
-                
-                periodStats[periodName].occupied += periodBookings;
-            }
+            if (!periodStats[periodName]) return;
+            const slots = period.slots || 1;
+            periodStats[periodName].total += slots;
+            
+            // Count bookings per category
+            const activeBookings = dayBookings.filter(b => b.periodIndex === index && !b.cancellation);
+            activeBookings.forEach(b => {
+                if (b.type === 'civil' || (b.type === undefined && b.cpf)) {
+                    periodStats[periodName].civis += 1;
+                } else {
+                    // military
+                    if (b.unit === 'copom') periodStats[periodName].mil_copom += 1;
+                    else periodStats[periodName].mil_outros += 1;
+                }
+            });
         });
     }
-    
-    // Calculate free slots
-    Object.keys(periodStats).forEach(period => {
-        periodStats[period].free = periodStats[period].total - periodStats[period].occupied;
-    });
     
     return periodStats;
 }
@@ -832,31 +833,54 @@ function renderOccupancyChart(periodStats) {
         
         if (stats.total === 0) return;
         
-        const occupiedPercent = (stats.occupied / stats.total * 100).toFixed(1);
-        const freePercent = (stats.free / stats.total * 100).toFixed(1);
+        // breakdown counts
+        const civis = stats.civis || 0;
+        const copom = stats.mil_copom || 0;
+        const outros = stats.mil_outros || 0;
+        const occupied = civis + copom + outros;
+        const free = Math.max(0, stats.total - occupied);
+        
+        const civisPct = ((civis / stats.total) * 100).toFixed(1);
+        const copomPct = ((copom / stats.total) * 100).toFixed(1);
+        const outrosPct = ((outros / stats.total) * 100).toFixed(1);
+        const freePct = ((free / stats.total) * 100).toFixed(1);
         
         html += `
             <div class="chart-row">
                 <div class="chart-label">
                     <strong>${periodName}</strong>
-                    <span>${stats.occupied} / ${stats.total} vagas</span>
+                    <span>${occupied} / ${stats.total} vagas ocupadas</span>
                 </div>
                 <div class="chart-bar-container">
-                    <div class="chart-bar-segment occupied" style="width: ${occupiedPercent}%;" title="${stats.occupied} ocupadas (${occupiedPercent}%)">
-                        ${occupiedPercent > 15 ? `${occupiedPercent}%` : ''}
+                    <div class="chart-bar-segment occupied" style="width: ${copomPct}% ; background: #6a1b9a;" title="${copom} militares COPOM (${copomPct}%)">
+                        ${copomPct > 12 ? `${copomPct}%` : ''}
                     </div>
-                    <div class="chart-bar-segment free" style="width: ${freePercent}%;" title="${stats.free} livres (${freePercent}%)">
-                        ${freePercent > 15 ? `${freePercent}%` : ''}
+                    <div class="chart-bar-segment occupied" style="width: ${outrosPct}% ; background: #ff7043;" title="${outros} militares Outros (${outrosPct}%)">
+                        ${outrosPct > 12 ? `${outrosPct}%` : ''}
+                    </div>
+                    <div class="chart-bar-segment occupied" style="width: ${civisPct}% ; background: #f44336;" title="${civis} civis (${civisPct}%)">
+                        ${civisPct > 12 ? `${civisPct}%` : ''}
+                    </div>
+                    <div class="chart-bar-segment free" style="width: ${freePct}%;" title="${free} livres (${freePct}%)">
+                        ${freePct > 12 ? `${freePct}%` : ''}
                     </div>
                 </div>
                 <div class="chart-stats">
-                    <div class="stat-item free-stat">
-                        <span class="stat-value">${stats.free}</span>
-                        <span class="stat-label">livres</span>
+                    <div class="stat-item" style="text-align:center;">
+                        <span class="stat-value" style="color:#f44336">${civis}</span>
+                        <span class="stat-label">Civis</span>
                     </div>
-                    <div class="stat-item occupied-stat">
-                        <span class="stat-value">${stats.occupied}</span>
-                        <span class="stat-label">ocupadas</span>
+                    <div class="stat-item" style="text-align:center;">
+                        <span class="stat-value" style="color:#6a1b9a">${copom}</span>
+                        <span class="stat-label">Militares COPOM</span>
+                    </div>
+                    <div class="stat-item" style="text-align:center;">
+                        <span class="stat-value" style="color:#ff7043">${outros}</span>
+                        <span class="stat-label">Militares Outros</span>
+                    </div>
+                    <div class="stat-item" style="text-align:center;">
+                        <span class="stat-value">${free}</span>
+                        <span class="stat-label">Livres</span>
                     </div>
                 </div>
             </div>
@@ -984,13 +1008,13 @@ function searchPatientBookings(type) {
     if (type === 'civil') {
         searchDoc = docInput.value.replace(/\D/g, '');
         if (searchDoc.length !== 11) {
-            searchResults.innerHTML = '<p class="no-bookings">Por favor, digite um CPF válido (11 dígitos).</p>';
+            searchResults.innerHTML = '<p class="no-bookings">CPF deve conter 11 dígitos.</p>';
             return;
         }
     } else {
         searchDoc = docInput.value.replace(/-/g, '').trim();
         if (searchDoc.length !== 7) {
-            searchResults.innerHTML = '<p class="no-bookings">Por favor, digite um RE válido (7 caracteres).</p>';
+            searchResults.innerHTML = '<p class="no-bookings">RE deve conter 6 números e o dígito final letra ou número.</p>';
             return;
         }
     }
@@ -1041,7 +1065,11 @@ function searchPatientBookings(type) {
     });
     
     if (foundBookings.length === 0) {
-        searchResults.innerHTML = '<p class="no-bookings">Nenhum agendamento encontrado para este CPF.</p>';
+        if (type === 'civil') {
+            searchResults.innerHTML = '<p class="no-bookings">CPF inexistente.</p>';
+        } else {
+            searchResults.innerHTML = '<p class="no-bookings">RE inexistente.</p>';
+        }
         return;
     }
     
@@ -1112,6 +1140,12 @@ function renderPatientBookingCard(dateKey, booking, period, status, months) {
                     <td style="padding: 8px; width: 30%; font-weight: 600;">Tipo:</td>
                     <td style="padding: 8px;">${patientType}</td>
                 </tr>
+                ${booking.rank ? `
+                <tr>
+                    <td style="padding: 8px; width: 30%; font-weight: 600;">Graduação:</td>
+                    <td style="padding: 8px;">${booking.rank}</td>
+                </tr>
+                ` : ''}
                 <tr>
                     <td style="padding: 8px; width: 30%; font-weight: 600;">Período:</td>
                     <td style="padding: 8px;">${periodName} (${periodTime})</td>

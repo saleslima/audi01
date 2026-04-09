@@ -82,9 +82,38 @@ export function showBookingForm(dateKey, periodIndex, period, day) {
             <p class="booking-info">${period.start} - ${period.end}</p>
             
             <label>Tipo de Paciente:</label>
-            <div class="filter-options" style="margin-bottom: 16px;">
+            <div class="filter-options" style="margin-bottom: 12px;">
                 <label><input type="radio" name="bookingPatientType" value="civil" checked> Civil</label>
                 <label><input type="radio" name="bookingPatientType" value="militar"> Militar</label>
+            </div>
+            
+            <div id="rankField" style="display: none; margin-bottom: 12px;">
+                <label for="bookingRank">Graduação:</label>
+                <select id="bookingRank" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); border-radius: 8px; font-size: 14px;">
+                    <option value="">Selecione a graduação</option>
+                    <option value="Sd PM 2cl">Sd PM 2cl</option>
+                    <option value="Sd PM 1cl">Sd PM 1cl</option>
+                    <option value="Cb PM">Cb PM</option>
+                    <option value="3º Sgt PM">3º Sgt PM</option>
+                    <option value="2º Sgt PM">2º Sgt PM</option>
+                    <option value="1º Sgt PM">1º Sgt PM</option>
+                    <option value="Subten PM">Subten PM</option>
+                    <option value="Asp Of PM">Asp Of PM</option>
+                    <option value="2º Ten PM">2º Ten PM</option>
+                    <option value="1º Ten PM">1º Ten PM</option>
+                    <option value="Cap PM">Cap PM</option>
+                    <option value="Maj PM">Maj PM</option>
+                    <option value="Ten Cel PM">Ten Cel PM</option>
+                    <option value="Cel PM">Cel PM</option>
+                </select>
+            </div>
+
+            <div id="militaryUnitField" style="display: none; margin-bottom: 12px;">
+                <label>Unidade (obrigatório para Militar):</label>
+                <div class="filter-options">
+                    <label><input type="radio" name="militaryUnit" value="copom"> COPOM</label>
+                    <label><input type="radio" name="militaryUnit" value="outros"> Outros</label>
+                </div>
             </div>
             
             <label for="bookingName">Nome completo:</label>
@@ -117,6 +146,9 @@ function setupBookingFormHandlers(dateKey, periodIndex, day) {
     const confirmBtn = document.getElementById('confirmBooking');
     const cancelBtn = document.getElementById('cancelBooking');
     const patientTypeRadios = document.querySelectorAll('input[name="bookingPatientType"]');
+    const rankField = document.getElementById('rankField');
+    const rankSelect = document.getElementById('bookingRank');
+    const militaryUnitField = document.getElementById('militaryUnitField');
 
     let currentType = 'civil';
 
@@ -128,10 +160,17 @@ function setupBookingFormHandlers(dateKey, periodIndex, day) {
             docLabel.textContent = 'CPF:';
             docInput.placeholder = '000.000.000-00';
             docInput.maxLength = 14;
+            rankField.style.display = 'none';
+            rankSelect.value = '';
+            militaryUnitField.style.display = 'none';
+            // uncheck unit radios
+            document.querySelectorAll('input[name="militaryUnit"]').forEach(r => r.checked = false);
         } else {
             docLabel.textContent = 'RE (Registro):';
             docInput.placeholder = '000000-0';
             docInput.maxLength = 8;
+            rankField.style.display = 'block';
+            militaryUnitField.style.display = 'block';
         }
         docInput.value = '';
         validateForm();
@@ -189,16 +228,26 @@ function setupBookingFormHandlers(dateKey, periodIndex, day) {
         const ph = (phoneInput.value || '').trim();
         
         let docValid = false;
+        let rankValid = true;
+        let unitValid = true;
+        
         if (currentType === 'civil') {
             const cpf = (docInput.value || '').replace(/\D/g, '');
             docValid = cpf.length === 11;
         } else {
             const re = (docInput.value || '').replace(/-/g, '');
             docValid = re.length === 7;
+            rankValid = rankSelect.value !== '';
+            const selectedUnit = document.querySelector('input[name="militaryUnit"]:checked');
+            unitValid = !!selectedUnit;
         }
         
-        confirmBtn.disabled = !(nameInput.value.trim().length > 0 && docValid && ph.length === 11 && complaintValid);
+        confirmBtn.disabled = !(nameInput.value.trim().length > 0 && docValid && ph.length === 11 && complaintValid && rankValid && unitValid);
     };
+
+    // Set up event listeners that depend on validateForm
+    rankSelect.addEventListener('change', validateForm);
+    document.querySelectorAll('input[name="militaryUnit"]').forEach(r => r.addEventListener('change', validateForm));
 
     confirmBtn.disabled = true;
     validateForm();
@@ -221,6 +270,9 @@ function setupBookingFormHandlers(dateKey, periodIndex, day) {
             bookingData.cpf = docInput.value.replace(/\D/g, '');
         } else {
             bookingData.re = docInput.value.replace(/-/g, '');
+            bookingData.rank = rankSelect.value;
+            const selectedUnit = document.querySelector('input[name="militaryUnit"]:checked');
+            bookingData.unit = selectedUnit ? selectedUnit.value : null;
         }
         
         bookPeriod(dateKey, periodIndex, bookingData);
@@ -276,6 +328,8 @@ export function showConfirmationModal(dateKey, periodIndex, bookingData, day) {
     detailsDiv.innerHTML = `
         <h3>Comprovante de Agendamento</h3>
         <p><strong>Tipo:</strong> ${bookingData.type === 'civil' ? 'Civil' : 'Militar'}</p>
+        ${bookingData.rank ? `<p><strong>Graduação:</strong> ${bookingData.rank}</p>` : ''}
+        ${bookingData.unit ? `<p><strong>Unidade:</strong> ${bookingData.unit === 'copom' ? 'COPOM' : 'Outros'}</p>` : ''}
         <p><strong>Data:</strong> ${dayNum} de ${months[month]} de ${year}</p>
         <p><strong>Período:</strong> ${period.name}</p>
         <p><strong>Horário:</strong> ${period.start} - ${period.end}</p>
@@ -297,6 +351,7 @@ export function showConfirmationModal(dateKey, periodIndex, bookingData, day) {
         docLabel,
         phone: bookingData.phone,
         complaint: bookingData.complaint,
+        unit: bookingData.unit || null,
         timestamp: new Date().toLocaleString('pt-BR')
     });
     
@@ -602,6 +657,12 @@ function generateBookingCard(booking, periodName, periodTime, dateKey, bookingIn
                     <td style="padding: 8px; width: 30%; font-weight: 600;">Tipo:</td>
                     <td style="padding: 8px;">${patientType}</td>
                 </tr>
+                ${booking.rank ? `
+                <tr>
+                    <td style="padding: 8px; width: 30%; font-weight: 600;">Graduação:</td>
+                    <td style="padding: 8px;">${booking.rank}</td>
+                </tr>
+                ` : ''}
                 <tr>
                     <td style="padding: 8px; width: 30%; font-weight: 600;">Paciente:</td>
                     <td style="padding: 8px;">${booking.name}</td>
